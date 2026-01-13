@@ -1,101 +1,83 @@
-# app.py
-# 標準ライブラリのみで動く最小BMI計算Webアプリ（Render対応）
-
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from wsgiref.simple_server import make_server
 from urllib.parse import parse_qs
 
-HTML = """<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <title>BMI計算機</title>
-  <style>
-    body {{ font-family: sans-serif; background: #f5f5f5; }}
-    .card {{ max-width: 420px; margin: 40px auto; padding: 20px;
-              background: #fff; border-radius: 8px; }}
-    label {{ display: block; margin-top: 12px; }}
-    input {{ width: 100%; padding: 8px; margin-top: 4px; }}
-    button {{ margin-top: 16px; padding: 10px; width: 48%; }}
-    .row {{ display: flex; justify-content: space-between; }}
-    .result {{ margin-top: 20px; font-weight: bold; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>BMI計算機</h1>
-    <form method="post">
-      <label>身長（cm）
-        <input type="number" step="0.1" name="height" value="{height}">
-      </label>
-      <label>体重（kg）
-        <input type="number" step="0.1" name="weight" value="{weight}">
-      </label>
-      <div class="row">
-        <button type="submit">計算</button>
-        <button type="button" onclick="clearForm()">クリア</button>
-      </div>
-    </form>
-    <div class="result">{result}</div>
-  </div>
-  <script>
-    function clearForm() {{
-      document.querySelector('input[name="height"]').value = '';
-      document.querySelector('input[name="weight"]').value = '';
-      document.querySelector('.result').innerText = '';
-    }}
-  </script>
-</body>
-</html>
-"""
+# --- WSGIアプリ本体 ---
+def app(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET")
+    result = ""
 
-def calc_bmi(height_cm, weight_kg):
-    try:
-        h = float(height_cm) / 100.0
-        w = float(weight_kg)
-        if h <= 0:
-            return None, ""
-        bmi = w / (h * h)
-    except Exception:
-        return None, ""
-    if bmi < 18.5:
-        judge = "低体重"
-    elif bmi < 25:
-        judge = "普通体重"
-    elif bmi < 30:
-        judge = "肥満（1度）"
-    else:
-        judge = "肥満（2度以上）"
-    return bmi, judge
+    # POSTリクエストの場合、フォームデータを処理
+    if method == "POST":
+        try:
+            size = int(environ.get("CONTENT_LENGTH", 0))
+            body = environ["wsgi.input"].read(size).decode("utf-8")
+            params = parse_qs(body)
+            height = float(params.get("height", ["0"])[0]) or 0
+            weight = float(params.get("weight", ["0"])[0]) or 0
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.respond("", "", "")
+            # BMI計算（単位：身長 m）
+            h_m = height / 100 if height else 0
+            bmi = weight / (h_m ** 2) if h_m else 0
 
-    def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8")
-        data = parse_qs(body)
-        height = data.get("height", [""])[0]
-        weight = data.get("weight", [""])[0]
+            # 評価
+            if bmi < 18.5:
+                category = "低体重（やせ）"
+            elif bmi < 25:
+                category = "普通体重"
+            elif bmi < 30:
+                category = "肥満（1度）"
+            elif bmi < 35:
+                category = "肥満（2度）"
+            elif bmi < 40:
+                category = "肥満（3度）"
+            else:
+                category = "肥満（4度）"
 
-        bmi, judge = calc_bmi(height, weight)
-        if bmi is None:
-            result = "数値を正しく入力してください"
-        else:
-            result = f"BMI: {bmi:.2f} / 判定: {judge}"
+            result = f"<p>BMI: {bmi:.1f}（{category}）</p>"
+        except Exception as e:
+            result = f"<p style='color:red;'>入力エラー: {e}</p>"
 
-        self.respond(height, weight, result)
+    # --- HTML生成 ---
+    html = f"""<!DOCTYPE html>
+    <html lang="ja">
+      <head>
+        <meta charset="utf-8">
+        <title>あなたのBMIを測定してみましょう</title>
+        <style>
+          body {{ font-family: sans-serif; margin: 40px; background: #f9f9f9; }}
+          h1 {{ background: #cde; padding: 10px; border-radius: 8px; }}
+          form {{ margin-top: 20px; }}
+          input[type=number] {{ width: 100px; margin-right: 10px; }}
+          button {{ margin-right: 10px; }}
+        </style>
+        <script>
+          function clearForm() {{
+            document.getElementById('height').value = '';
+            document.getElementById('weight').value = '';
+          }}
+        </script>
+      </head>
+      <body>
+        <h1>BMI計算機</h1>
+        <form method="post">
+          <label>身長(cm): <input type="text" id="height" name="height" step="any" required></label><br><br>
+          <label>体重(kg): <input type="text" id="weight" name="weight" step="any" required></label><br><br>
+          <button type="submit">計算</button>
+          <button type="button" onclick="clearForm()">入力をリセット</button>
+        </form>
+        <div style="margin-top:20px;">{result}</div>
+      </body>
+    </html>"""
 
-    def respond(self, height, weight, result):
-        html = HTML.format(height=height, weight=weight, result=result)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+    start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+    return [html.encode("utf-8")]
 
+
+# --- メイン起動部 ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    print(f"Listening on port {port}")
-    server.serve_forever()
+    host = "0.0.0.0"
+    print(f"Server running on http://localhost:{port}")
+    with make_server(host, port, app) as httpd:
+        httpd.serve_forever()
