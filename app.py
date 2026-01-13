@@ -43,7 +43,7 @@ def app(environ, start_response):
     <html lang="ja">
       <head>
         <meta charset="utf-8">
-        <title>あなたのBMIを測定してみましょう</title>
+        <title>BMI計算機</title>
         <style>
           body {{ font-family: sans-serif; margin: 40px; background: #f9f9f9; }}
           h1 {{ background: #cde; padding: 10px; border-radius: 8px; }}
@@ -59,10 +59,10 @@ def app(environ, start_response):
         </script>
       </head>
       <body>
-        <h1>BMI計算機</h1>
+        <h1>あなたのBMIを測定してみましょう</h1>
         <form method="post">
-          <label>身長(cm): <input type="text" id="height" name="height" step="any" required></label><br><br>
-          <label>体重(kg): <input type="text" id="weight" name="weight" step="any" required></label><br><br>
+          <label>身長(cm): <input type="number" id="height" name="height" inputmode="decimal" min="0" step="0.1"" required></label><br><br>
+          <label>体重(kg): <input type="number" id="weight" name="weight" inputmode="decimal" min="0" step="0.1" required></label><br><br>
           <button type="submit">計算</button>
           <button type="button" onclick="clearForm()">入力をリセット</button>
         </form>
